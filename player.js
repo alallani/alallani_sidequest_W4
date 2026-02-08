@@ -41,9 +41,9 @@ class Player {
   }
 
   draw() {
-    // Same "simple high-contrast avatar" idea as your original. 
-    fill(20, 120, 255);
-    circle(this.pixelX(), this.pixelY(), this.ts * 0.6);
+    textSize(this.ts * 0.6);
+    textAlign(CENTER, CENTER);
+    text("🕵️‍♂️", this.pixelX(), this.pixelY());
   }
 
   /*

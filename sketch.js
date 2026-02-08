@@ -19,34 +19,62 @@ Based on the playable maze structure from Example 3
 
 const TS = 32;
 
-// Raw JSON data (from levels.json).
+// --- Game Data ---
 let levelsData;
-
-// Array of Level instances.
 let levels = [];
-
-// Current level index.
 let li = 0;
-
-// Player instance (tile-based).
 let player;
 
+let evidenceCollected = 0;
+const EVIDENCE_NEEDED = 3;
+
+let currentClue = null;
+let notEnoughClues = false;
+
+let identifyKiller = false;
+let killerOptions = [];
+let correctKiller = 0;
+let killerImages = [];
+let killerResult = null; // null=no choice, "correct"/"wrong"
+
+let level2Killer = null; // only exists in level 2
+
+let playerCaught = false; // flag for collision
+let caughtPopup = false; // show "The killer caught you!" popup
+
+const CLUES = [
+  [
+    "The killer's favourite colour is red.",
+    "The killer was seen at the library.",
+    "The killer gets cold easily.",
+  ],
+  [
+    "The killer loves vanilla ice cream.",
+    "Black hair was found at the scene.",
+    "The killer is allergic to cherries.",
+  ],
+];
+
 function preload() {
-  // Ensure level data is ready before setup runs.
   levelsData = loadJSON("levels.json");
+
+  killerImages = [
+    [
+      loadImage("assets/images/level1_killer1.png"),
+      loadImage("assets/images/level1_killer2.png"),
+      loadImage("assets/images/level1_killer3.png"),
+    ],
+    [
+      loadImage("assets/images/level2_killer1.png"),
+      loadImage("assets/images/level2_killer2.png"),
+      loadImage("assets/images/level2_killer3.png"),
+    ],
+  ];
 }
 
 function setup() {
-  /*
-  Convert raw JSON grids into Level objects.
-  levelsData.levels is an array of 2D arrays. 
-  */
   levels = levelsData.levels.map((grid) => new Level(copyGrid(grid), TS));
-
-  // Create a player.
   player = new Player(TS);
-
-  // Load the first level (sets player start + canvas size).
   loadLevel(0);
 
   noStroke();
@@ -57,77 +85,478 @@ function setup() {
 function draw() {
   background(240);
 
-  // Draw current level then player on top.
   levels[li].draw();
+
+  // Draw Level 2 killer
+  if (li === 1 && level2Killer) {
+    textSize(TS * 0.6);
+    textAlign(CENTER, CENTER);
+
+    // If player caught, draw killer on top of player
+    if (playerCaught) {
+      text("😈", player.pixelX(), player.pixelY());
+    } else {
+      text("😈", level2Killer.c * TS + TS / 2, level2Killer.r * TS + TS / 2);
+    }
+  }
+
   player.draw();
-
   drawHUD();
+
+  // Handle popups as before...
+  if (currentClue) {
+    drawPopup(
+      currentClue,
+      color(73, 73, 171),
+      "Continue",
+      color(200, 200, 254),
+    );
+    return;
+  }
+  if (notEnoughClues) {
+    drawPopup(
+      "You don't have all the clues!",
+      color(200, 94, 7),
+      "Continue",
+      color(248, 169, 104),
+    );
+    return;
+  }
+  if (identifyKiller) {
+    drawKillerPopup();
+    return;
+  }
+
+  if (caughtPopup) {
+    textSize(TS * 0.6);
+    textAlign(CENTER, CENTER);
+    text("😈", player.pixelX(), player.pixelY());
+
+    drawPopup(
+      "The killer caught you!",
+      color(150, 50, 50),
+      "Restart",
+      color(255, 200, 200),
+      () => {
+        caughtPopup = false;
+        playerCaught = false;
+        loadLevel(li);
+      },
+    );
+    return;
+  }
 }
 
+// --- HUD ---
 function drawHUD() {
-  // HUD matches your original idea: show level count and controls.
-  fill(0);
-  text(`Level ${li + 1}/${levels.length} — WASD/Arrows to move`, 10, 16);
+  fill(255);
+  textSize(14);
+  textAlign(LEFT, TOP);
+  text(`Level ${li + 1}/${levels.length} — WASD/Arrows to move`, 31, 12);
+  text(
+    `Clues Collected: ${evidenceCollected}/${EVIDENCE_NEEDED}`,
+    31,
+    height - 25,
+  );
 }
 
+function drawPopup(message, bgColor, btnText, btnColor, onClick) {
+  let rectW = width * 0.7;
+  let rectH = height * 0.5;
+  let rectX = (width - rectW) / 2;
+  let rectY = (height - rectH) / 2;
+
+  fill(bgColor);
+  rect(rectX, rectY, rectW, rectH, 10);
+
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(14);
+  text(message, rectX + rectW / 2, rectY + rectH / 2 - 20);
+
+  let btnW = 100;
+  let btnH = 30;
+  let btnX = rectX + rectW / 2 - btnW / 2;
+  let btnY = rectY + rectH - btnH - 20;
+
+  fill(btnColor);
+  rect(btnX, btnY, btnW, btnH, 5);
+
+  fill(0);
+  textSize(14);
+  textAlign(CENTER, CENTER);
+  text(btnText, rectX + rectW / 2, btnY + btnH / 2);
+
+  // Save button area for click detection
+  popupButton = { x: btnX, y: btnY, w: btnW, h: btnH, onClick };
+}
+
+// --- Killer Popup ---
+function drawKillerPopup() {
+  let rectW = width * 0.7,
+    rectH = height * 0.5;
+  let rectX = (width - rectW) / 2,
+    rectY = (height - rectH) / 2;
+
+  fill(0);
+  rect(rectX, rectY, rectW, rectH, 10);
+
+  textAlign(CENTER, TOP);
+  textSize(14);
+
+  if (!killerResult) {
+    // Show instructions and killer images
+    fill(255);
+    text("Identify the killer using the clues!", rectX + rectW / 2, rectY + 10);
+
+    let imgSize = 60;
+    let numImages = killerOptions.length;
+    let paddingX = rectW * 0.15;
+    let spacing = numImages > 1 ? (rectW - paddingX * 2) / (numImages - 1) : 0;
+
+    for (let i = 0; i < numImages; i++) {
+      let img = killerOptions[i];
+      let scale = imgSize / max(img.width, img.height);
+      let imgW = img.width * scale,
+        imgH = img.height * scale;
+      let x = rectX + paddingX + spacing * i - imgW / 2;
+      let y = rectY + rectH * 0.65 - imgH / 2;
+
+      image(img, x, y, imgW, imgH);
+    }
+  } else {
+    // Show result message
+    fill(killerResult === "correct" ? color(12, 233, 12) : color(233, 12, 12));
+    text(
+      killerResult === "correct"
+        ? "You solved the case!"
+        : "Wrong killer! Try again.",
+      rectX + rectW / 2,
+      rectY + 30,
+    );
+
+    // Determine button text
+    let btnText;
+    if (killerResult === "correct") {
+      btnText = li === 1 ? "Back to Level 1" : "Next Level";
+    } else {
+      btnText = "Restart";
+    }
+
+    // Draw button
+    let btnW = 120,
+      btnH = 30;
+    let btnX = rectX + rectW / 2 - btnW / 2;
+    let btnY = rectY + rectH - btnH - 20;
+
+    fill(200, 200, 254);
+    rect(btnX, btnY, btnW, btnH, 5);
+
+    fill(0);
+    textSize(14);
+    textAlign(CENTER, CENTER);
+    text(btnText, rectX + rectW / 2, btnY + btnH / 2);
+
+    // Store popup button for click handling
+    popupButton = {
+      x: btnX,
+      y: btnY,
+      w: btnW,
+      h: btnH,
+      onClick: () => {
+        if (killerResult === "correct") {
+          if (li === 1)
+            loadLevel(0); // back to level 1
+          else nextLevel();
+        } else {
+          loadLevel(li);
+        }
+
+        identifyKiller = false;
+        killerResult = null;
+        popupButton = null;
+      },
+    };
+  }
+}
+
+// --- Input ---
 function keyPressed() {
-  /*
-  Convert key presses into a movement direction. (WASD + arrows)
-  */
-  let dr = 0;
-  let dc = 0;
+  // Disable all movement if player is caught or in a popup
+  if (currentClue || notEnoughClues || identifyKiller || playerCaught) return;
+
+  let dr = 0,
+    dc = 0;
 
   if (keyCode === LEFT_ARROW || key === "a" || key === "A") dc = -1;
   else if (keyCode === RIGHT_ARROW || key === "d" || key === "D") dc = 1;
   else if (keyCode === UP_ARROW || key === "w" || key === "W") dr = -1;
   else if (keyCode === DOWN_ARROW || key === "s" || key === "S") dr = 1;
-  else return; // not a movement key
+  else return;
 
-  // Try to move. If blocked, nothing happens.
-  const moved = player.tryMove(levels[li], dr, dc);
+  // Attempt to move the player
+  if (player.tryMove(levels[li], dr, dc)) {
+    // --- 1) Check collision immediately after player moves ---
+    if (
+      level2Killer &&
+      player.r === level2Killer.r &&
+      player.c === level2Killer.c
+    ) {
+      playerCaught = true;
+      caughtPopup = true;
+      return; // stop here, killer doesn't move
+    }
 
-  // If the player moved onto a goal tile, advance levels.
-  if (moved && levels[li].isGoal(player.r, player.c)) {
-    nextLevel();
+    // --- 2) Move killer only if player not caught ---
+    if (li === 1 && level2Killer) {
+      moveKillerRandomOrChase();
+    }
+
+    // --- 3) Check collision again after killer moves ---
+    if (
+      level2Killer &&
+      player.r === level2Killer.r &&
+      player.c === level2Killer.c
+    ) {
+      playerCaught = true;
+      caughtPopup = true;
+      return; // stop here, do not process tiles
+    }
+
+    // --- 4) Only check tiles (clues/goals) if player is not caught ---
+    if (!playerCaught) {
+      checkTile();
+    }
   }
 }
 
-// ----- Level switching -----
+function mousePressed() {
+  // Normal popups
+  if (currentClue) return handlePopupClick(() => (currentClue = null));
+  if (notEnoughClues) return handlePopupClick(() => (notEnoughClues = false));
+
+  // Caught popup
+  if (caughtPopup)
+    return handlePopupClick(() => {
+      caughtPopup = false;
+      playerCaught = false;
+      loadLevel(li);
+    });
+
+  if (identifyKiller) {
+    let rectW = width * 0.7,
+      rectH = height * 0.5;
+    let rectX = (width - rectW) / 2,
+      rectY = (height - rectH) / 2;
+
+    if (!killerResult) {
+      let imgSize = 60;
+      let numImages = killerOptions.length;
+      let paddingX = rectW * 0.15;
+      let spacing =
+        numImages > 1 ? (rectW - paddingX * 2) / (numImages - 1) : 0;
+
+      for (let i = 0; i < numImages; i++) {
+        let img = killerOptions[i];
+        let scale = imgSize / max(img.width, img.height);
+        let imgW = img.width * scale,
+          imgH = img.height * scale;
+        let x = rectX + paddingX + spacing * i - imgW / 2;
+        let y = rectY + rectH * 0.65 - imgH / 2;
+
+        if (
+          mouseX >= x &&
+          mouseX <= x + imgW &&
+          mouseY >= y &&
+          mouseY <= y + imgH
+        ) {
+          killerResult =
+            killerOptions[i] === correctKiller ? "correct" : "wrong";
+          return;
+        }
+      }
+    } else {
+      let btnW = 120,
+        btnH = 40;
+      let btnX = rectX + rectW / 2 - btnW / 2;
+      let btnY = rectY + rectH - btnH - 20;
+
+      if (
+        mouseX >= btnX &&
+        mouseX <= btnX + btnW &&
+        mouseY >= btnY &&
+        mouseY <= btnY + btnH
+      ) {
+        if (killerResult === "correct") nextLevel();
+        else loadLevel(li);
+
+        identifyKiller = false;
+        killerResult = null;
+      }
+    }
+    return;
+  }
+}
+
+// --- Popup Click Helper ---
+let popupButton = null; // global variable to store current popup button
+
+function handlePopupClick(defaultCallback) {
+  if (!popupButton) return;
+
+  if (
+    mouseX >= popupButton.x &&
+    mouseX <= popupButton.x + popupButton.w &&
+    mouseY >= popupButton.y &&
+    mouseY <= popupButton.y + popupButton.h
+  ) {
+    if (popupButton.onClick) popupButton.onClick();
+    else if (defaultCallback) defaultCallback();
+
+    // Clear after click
+    popupButton = null;
+  }
+}
 
 function loadLevel(idx) {
   li = idx;
+  evidenceCollected = 0;
+  currentClue = null;
+  notEnoughClues = false;
+  identifyKiller = false;
+  killerResult = null;
 
   const level = levels[li];
+  level.grid = level.copyGrid(level.originalGrid);
 
-  // Place player at the level's start tile (2), if present.
-  if (level.start) {
-    player.setCell(level.start.r, level.start.c);
-  } else {
-    // Fallback spawn: top-left-ish (but inside bounds).
-    player.setCell(1, 1);
-  }
+  if (level.start) player.setCell(level.start.r, level.start.c);
+  else player.setCell(1, 1);
 
-  // Ensure the canvas matches this level’s dimensions.
+  if (li === 1) {
+    level2Killer = null;
+    for (let r = 0; r < level.rows(); r++) {
+      for (let c = 0; c < level.cols(); c++) {
+        if (level.tileAt(r, c) === 5) {
+          level2Killer = { r, c };
+          level.grid[r][c] = 0;
+          break;
+        }
+      }
+      if (level2Killer) break;
+    }
+  } else level2Killer = null;
+
   resizeCanvas(level.pixelWidth(), level.pixelHeight());
 }
 
 function nextLevel() {
-  // Wrap around when we reach the last level.
   const next = (li + 1) % levels.length;
   loadLevel(next);
 }
 
-// ----- Utility -----
-
+// --- Utility ---
 function copyGrid(grid) {
-  /*
-  Make a deep-ish copy of a 2D array:
-  - new outer array
-  - each row becomes a new array
-
-  Why copy?
-  - Because Level constructor may normalize tiles (e.g., replace 2 with 0)
-  - And we don’t want to accidentally mutate the raw JSON data object. 
-  */
   return grid.map((row) => row.slice());
+}
+
+function checkTile() {
+  const level = levels[li];
+  const tile = level.tileAt(player.r, player.c);
+
+  if (tile === 4) {
+    currentClue = CLUES[li][evidenceCollected];
+    evidenceCollected++;
+    level.grid[player.r][player.c] = 0;
+  } else if (tile === 3) {
+    if (evidenceCollected >= EVIDENCE_NEEDED) {
+      setupKillerPopup();
+      identifyKiller = true;
+    } else {
+      notEnoughClues = true;
+    }
+  }
+}
+
+// --- Level 2 Killer: mostly random, sometimes chases ---
+function moveKillerRandomOrChase() {
+  if (currentClue || notEnoughClues || identifyKiller) return;
+  const level = levels[li];
+  if (!level2Killer) return;
+
+  let dr = 0,
+    dc = 0;
+
+  // --- 20% chance to chase player ---
+  if (random() < 0.2) {
+    const rDiff = player.r - level2Killer.r;
+    const cDiff = player.c - level2Killer.c;
+
+    // Prioritize axis with largest distance
+    if (Math.abs(rDiff) > Math.abs(cDiff)) {
+      dr = Math.sign(rDiff); // move vertically
+      dc = 0;
+    } else {
+      dr = 0;
+      dc = Math.sign(cDiff); // move horizontally
+    }
+
+    // Check for blocked tile
+    let newR = level2Killer.r + dr;
+    let newC = level2Killer.c + dc;
+    if (!level.inBounds(newR, newC) || level.isWall(newR, newC)) {
+      dr = 0;
+      dc = 0; // fallback to random move
+    }
+  }
+
+  // --- If not chasing or blocked, pick random valid move ---
+  if (dr === 0 && dc === 0) {
+    const directions = shuffle([
+      { dr: -1, dc: 0 },
+      { dr: 1, dc: 0 },
+      { dr: 0, dc: -1 },
+      { dr: 0, dc: 1 },
+    ]);
+
+    for (let dir of directions) {
+      let newR = level2Killer.r + dir.dr;
+      let newC = level2Killer.c + dir.dc;
+      if (level.inBounds(newR, newC) && !level.isWall(newR, newC)) {
+        dr = dir.dr;
+        dc = dir.dc;
+        break;
+      }
+    }
+  }
+
+  // --- Move killer ---
+  if (dr !== 0 || dc !== 0) {
+    level2Killer.r += dr;
+    level2Killer.c += dc;
+  }
+
+  // --- Check collision after killer moves ---
+  checkKillerCollision();
+}
+
+function checkKillerCollision() {
+  if (
+    level2Killer &&
+    level2Killer.r === player.r &&
+    level2Killer.c === player.c
+  ) {
+    playerCaught = true; // killer is on player
+    caughtPopup = true; // trigger caught popup
+  }
+}
+
+function setupKillerPopup() {
+  if (!killerImages[li]) {
+    console.warn("No killer images for level:", li);
+    return;
+  }
+
+  killerOptions = killerImages[li].slice();
+  killerOptions = shuffle(killerOptions);
+  correctKiller = killerImages[li][0];
 }
