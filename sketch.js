@@ -89,14 +89,14 @@ function draw() {
 
   // Draw Level 2 killer
   if (li === 1 && level2Killer) {
-    textSize(TS * 0.6);
-    textAlign(CENTER, CENTER);
+    // Always draw the killer at its current position
+    level2Killer.draw();
 
-    // If player caught, draw killer on top of player
+    // If the player is caught, show killer emoji on top of player
     if (playerCaught) {
+      textSize(TS * 0.6);
+      textAlign(CENTER, CENTER);
       text("😈", player.pixelX(), player.pixelY());
-    } else {
-      text("😈", level2Killer.c * TS + TS / 2, level2Killer.r * TS + TS / 2);
     }
   }
 
@@ -297,30 +297,22 @@ function keyPressed() {
   // Attempt to move the player
   if (player.tryMove(levels[li], dr, dc)) {
     // --- 1) Check collision immediately after player moves ---
-    if (
-      level2Killer &&
-      player.r === level2Killer.r &&
-      player.c === level2Killer.c
-    ) {
+    if (li === 1 && level2Killer && level2Killer.checkCollision(player)) {
       playerCaught = true;
       caughtPopup = true;
-      return; // stop here, killer doesn't move
+      return; // killer got player, stop here
     }
 
-    // --- 2) Move killer only if player not caught ---
+    // --- 2) Move killer (if level 2) ---
     if (li === 1 && level2Killer) {
-      moveKillerRandomOrChase();
-    }
+      level2Killer.move(levels[li], player);
 
-    // --- 3) Check collision again after killer moves ---
-    if (
-      level2Killer &&
-      player.r === level2Killer.r &&
-      player.c === level2Killer.c
-    ) {
-      playerCaught = true;
-      caughtPopup = true;
-      return; // stop here, do not process tiles
+      // --- 3) Check collision again after killer moves ---
+      if (level2Killer.checkCollision(player)) {
+        playerCaught = true;
+        caughtPopup = true;
+        return;
+      }
     }
 
     // --- 4) Only check tiles (clues/goals) if player is not caught ---
@@ -419,6 +411,8 @@ function handlePopupClick(defaultCallback) {
 }
 
 function loadLevel(idx) {
+  playerCaught = false;
+  caughtPopup = false;
   li = idx;
   evidenceCollected = 0;
   currentClue = null;
@@ -433,18 +427,11 @@ function loadLevel(idx) {
   else player.setCell(1, 1);
 
   if (li === 1) {
+    const killers = level.spawnKillers();
+    level2Killer = killers.length > 0 ? killers[0] : null;
+  } else {
     level2Killer = null;
-    for (let r = 0; r < level.rows(); r++) {
-      for (let c = 0; c < level.cols(); c++) {
-        if (level.tileAt(r, c) === 5) {
-          level2Killer = { r, c };
-          level.grid[r][c] = 0;
-          break;
-        }
-      }
-      if (level2Killer) break;
-    }
-  } else level2Killer = null;
+  }
 
   resizeCanvas(level.pixelWidth(), level.pixelHeight());
 }
@@ -460,93 +447,18 @@ function copyGrid(grid) {
 }
 
 function checkTile() {
-  const level = levels[li];
-  const tile = level.tileAt(player.r, player.c);
+  const result = levels[li].handlePlayerTile(player);
 
-  if (tile === 4) {
+  if (result === "clue") {
     currentClue = CLUES[li][evidenceCollected];
     evidenceCollected++;
-    level.grid[player.r][player.c] = 0;
-  } else if (tile === 3) {
+  } else if (result === "goal") {
     if (evidenceCollected >= EVIDENCE_NEEDED) {
       setupKillerPopup();
       identifyKiller = true;
     } else {
       notEnoughClues = true;
     }
-  }
-}
-
-// --- Level 2 Killer: mostly random, sometimes chases ---
-function moveKillerRandomOrChase() {
-  if (currentClue || notEnoughClues || identifyKiller) return;
-  const level = levels[li];
-  if (!level2Killer) return;
-
-  let dr = 0,
-    dc = 0;
-
-  // --- 20% chance to chase player ---
-  if (random() < 0.2) {
-    const rDiff = player.r - level2Killer.r;
-    const cDiff = player.c - level2Killer.c;
-
-    // Prioritize axis with largest distance
-    if (Math.abs(rDiff) > Math.abs(cDiff)) {
-      dr = Math.sign(rDiff); // move vertically
-      dc = 0;
-    } else {
-      dr = 0;
-      dc = Math.sign(cDiff); // move horizontally
-    }
-
-    // Check for blocked tile
-    let newR = level2Killer.r + dr;
-    let newC = level2Killer.c + dc;
-    if (!level.inBounds(newR, newC) || level.isWall(newR, newC)) {
-      dr = 0;
-      dc = 0; // fallback to random move
-    }
-  }
-
-  // --- If not chasing or blocked, pick random valid move ---
-  if (dr === 0 && dc === 0) {
-    const directions = shuffle([
-      { dr: -1, dc: 0 },
-      { dr: 1, dc: 0 },
-      { dr: 0, dc: -1 },
-      { dr: 0, dc: 1 },
-    ]);
-
-    for (let dir of directions) {
-      let newR = level2Killer.r + dir.dr;
-      let newC = level2Killer.c + dir.dc;
-      if (level.inBounds(newR, newC) && !level.isWall(newR, newC)) {
-        dr = dir.dr;
-        dc = dir.dc;
-        break;
-      }
-    }
-  }
-
-  // --- Move killer ---
-  if (dr !== 0 || dc !== 0) {
-    level2Killer.r += dr;
-    level2Killer.c += dc;
-  }
-
-  // --- Check collision after killer moves ---
-  checkKillerCollision();
-}
-
-function checkKillerCollision() {
-  if (
-    level2Killer &&
-    level2Killer.r === player.r &&
-    level2Killer.c === player.c
-  ) {
-    playerCaught = true; // killer is on player
-    caughtPopup = true; // trigger caught popup
   }
 }
 

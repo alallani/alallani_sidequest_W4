@@ -1,16 +1,16 @@
-## Project Title
-
-GBDA302 Week 4 Example 4: layable Maze (JSON + Level class + Player class)
+## Side Quest Week 4: Playable Maze
 
 ---
 
 ## Authors
 
-Karen Cochrane and David Han
+Aliza Lallani, 21035348
 
 ---
 
 ## Description
+
+This project invites users to navigate a multi-level mystery game
 
 Based on example 3, creates and positions the player using preloads and loadJSON files.
 

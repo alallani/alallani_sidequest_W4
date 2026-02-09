@@ -35,6 +35,7 @@ class Level {
       this.grid[this.start.r][this.start.c] = 0;
       this.originalGrid[this.start.r][this.start.c] = 0; // keep consistent
     }
+    this.killers = this.spawnKillers();
   }
 
   // ----- Size helpers -----
@@ -71,6 +72,22 @@ class Level {
     return this.tileAt(r, c) === 3;
   }
 
+  // ----- Handle player interaction with tiles -----
+  handlePlayerTile(player) {
+    const tile = this.tileAt(player.r, player.c);
+
+    if (tile === 4) {
+      // clue
+      this.grid[player.r][player.c] = 0; // remove the clue from grid
+      return "clue";
+    } else if (tile === 3) {
+      // goal
+      return "goal";
+    }
+
+    return null; // nothing special
+  }
+
   // ----- Start-finding -----
   findStart() {
     for (let r = 0; r < this.grid.length; r++) {
@@ -79,6 +96,21 @@ class Level {
       }
     }
     return null;
+  }
+
+  spawnKillers() {
+    const killers = [];
+
+    for (let r = 0; r < this.rows(); r++) {
+      for (let c = 0; c < this.cols(); c++) {
+        if (this.grid[r][c] === 5) {
+          killers.push(new Killer(r, c, this.ts));
+          this.grid[r][c] = 0;
+        }
+      }
+    }
+
+    return killers;
   }
 
   // ----- Drawing -----
