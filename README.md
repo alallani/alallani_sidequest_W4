@@ -18,10 +18,11 @@ This project invites users to navigate a multi-level mystery game. Players take 
 
 - Player is encouraged to zoom in for better visibility
 - Player (🕵️‍♂️) uses WASD or arrow keys to move through the maze, one space at a time
-- Touching a clue (🧩) opens it
+- Moving on a clue (🧩) opens it
 - Player clicks on "Continue" to close the clue and return to the maze
 - Player arrives at the exit (🚪) and clicks on who they believe the killer is
 - In Level 2, a killer (😈) moves one space every time the player moves one space
+- If the player and killer come in contact, the player is caught and must restart
 
 ---
 
