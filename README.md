@@ -27,16 +27,28 @@ This project invites users to navigate a multi-level mystery game. Players take 
 
 ## Assets
 
-assets/images/level1_killer1.png
-assets/images/level1_killer2.png
-assets/images/level1_killer3.png
+> - `assets/images/level1_killer1.png`
+> - `assets/images/level1_killer2.png`
+> - `assets/images/level1_killer3.png`
 
-assets/images/level2_killer1.png
-assets/images/level2_killer2.png
-assets/images/level2_killer3.png
+> - `assets/images/level2_killer1.png`
+> - `assets/images/level2_killer2.png`
+> - `assets/images/level2_killer3.png`
+
+All assets were generated with Apple's Genmoji
 
 ---
 
 ## References
+
+[1] Emojipedia. Door Emoji. Emojipedia. https://emojipedia.org/door
+
+[2] Emojipedia. Man Detective Emoji. Emojipedia. https://emojipedia.org/man-detective
+
+[3] Emojipedia. Puzzle Piece Emoji. Emojipedia. https://emojipedia.org/puzzle-piece
+
+[4] Emojipedia. Smiling Face with Horns Emoji. Emojipedia. https://emojipedia.org/smiling-face-with-horns
+
+Player, clue, door, and killer emojis were copied as text from Emojipedia, a free and public resource.
 
 ---
